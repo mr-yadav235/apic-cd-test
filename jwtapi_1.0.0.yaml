@@ -1,0 +1,271 @@
+---
+swagger: "2.0"
+info:
+  title: "jwtAPI"
+  x-ibm-name: "jwtapi"
+  version: "1.0.0"
+host: "$(catalog.host)"
+schemes:
+- "https"
+basePath: "/"
+produces:
+- "application/xml"
+- "application/json"
+consumes:
+- "application/json"
+- "application/xml"
+security:
+- {}
+securityDefinitions:
+  clientSecret:
+    type: "apiKey"
+    description: ""
+    in: "header"
+    name: "X-IBM-Client-Secret"
+  clientId:
+    type: "apiKey"
+    description: ""
+    in: "header"
+    name: "X-IBM-Client-Id"
+x-ibm-configuration:
+  assembly:
+    execute:
+    - set-variable:
+        title: "set-variable"
+        actions:
+        - value: "{ \"alg\": \"HS256\",   \"kty\": \"oct\",   \"use\": \"sig\",  \
+            \ \"k\": \"o5yErLaE-dbgVpSw65Rq57OA9dHyaF66Q_Et5azPa-XUjbyP0w9iRWhR4kru09aFfQLXeIODIN4uhjElYKXt8n76jt0Pjkd2pqk4t9abRF6tnL19GV4pflfL6uvVKkP4weOh39tqHt4TmkBgF2P-gFhgssZpjwq6l82fz3dUhQ2nkzoLA_CnyDGLZLd7SZ1yv73uzfE2Ot813zmig8KTMEMWVcWSDvy61F06vs_6LURcq_IEEevUiubBxG5S2akNnWigfpbhWYjMI5M22FOCpdcDBt4L7K1-yHt95Siz0QUb0MNlT_X8F76wH7_A37GpKKJGqeaiNWmHkgWdE8QWDQ\"\
+            ,   \"kid\": \"hs256-key\" }"
+          add: "hs256-key"
+    - switch:
+        title: "switch"
+        case:
+        - condition: "((request.verb==='POST')&&(api.operation.path==='/generate-jwt'))"
+          execute:
+          - jwt-generate:
+              title: "jwt-generate"
+              jwt: "generated-jwt"
+              exp-claim: 36000
+              version: "1.0.0"
+              jwe-enc: "A128CBC-HS256"
+              jwe-alg: "A256KW"
+              jws-alg: "HS256"
+              jti-claim: false
+              jws-jwk: "hs256-key"
+              iss-claim: "request.body.source"
+              sub-claim: "request.body.username"
+              aud-claim: "request.body.user_id"
+          - gatewayscript:
+              title: "gatewayscript"
+              source: "var token = apim.getvariable('generated-jwt');\nvar obj = {\n\
+                \    access_token: token\n}\n\napim.setvariable('message.body',obj);\n"
+        - condition: "request.authorization.indexOf(\"Bearer\") > -1 && request.verb==='GET'&&\
+            \ api.operation.path==='/validate-jwt'"
+          execute:
+          - gatewayscript:
+              title: "gatewayscript"
+              source: "var authNode = apim.getvariable('request.headers.authorization');\n\
+                \napim.setvariable('input-jwt', authNode.replace(/^Bearer /g, ''));"
+          - jwt-validate:
+              title: "jwt-validate"
+              jwt: "input-jwt"
+              output-claims: "decoded-claims"
+              version: "1.0.0"
+              iss-claim: "IBM API Connect"
+              aud-claim: ""
+              description: ""
+              jws-jwk: "hs256-key"
+          - gatewayscript:
+              title: "gatewayscript"
+              version: "1.0.0"
+              source: "apim.setvariable('message.body',apim.getvariable('decoded-claims'));"
+          - operation-switch:
+              title: "operation-switch"
+              case:
+              - operations:
+                - verb: "post"
+                  path: "/refresh/token"
+                execute:
+                - gatewayscript:
+                    title: "gatewayscript"
+                    version: "1.0.0"
+                    source: "apim.setvariable('request.body',apim.getvariable('message.body'));\n\
+                      \n\n"
+                - map:
+                    title: "map"
+                    inputs:
+                      input:
+                        schema:
+                          description: ""
+                          type: "object"
+                          properties:
+                            iss:
+                              type: "string"
+                              name: "iss"
+                            sub:
+                              type: "string"
+                              name: "sub"
+                            aud:
+                              type: "string"
+                              name: "aud"
+                            exp:
+                              type: "number"
+                              name: "exp"
+                            iat:
+                              type: "number"
+                              name: "iat"
+                          example: "{\"iss\":\"IBM API Connect\",\"sub\":\"ganesh\"\
+                            ,\"aud\":\"190c7238-4033-42a6-b0a3-18a71f304ff1\",\"exp\"\
+                            :1577744186,\"iat\":1577708186}"
+                        variable: "request.body"
+                        content: "application/json"
+                    outputs:
+                      output:
+                        schema:
+                          description: ""
+                          type: "object"
+                          properties:
+                            user_id:
+                              type: "string"
+                              name: "user_id"
+                            username:
+                              type: "string"
+                              name: "username"
+                            source:
+                              type: "string"
+                              name: "source"
+                          example: "{\"user_id\":\"190c7238-4033-42a6-b0a3-18a71f304ff1\"\
+                            ,\"username\":\"ganesh\",\"source\":\"IBM API Connect\"\
+                            }"
+                        variable: "request.body"
+                        content: "application/json"
+                    actions:
+                    - set: "output.user_id"
+                      from: "input.aud"
+                    - set: "output.username"
+                      from: "input.sub"
+                    - set: "output.source"
+                      from: "input.iss"
+                    version: "1.0.0"
+                - jwt-generate:
+                    title: "jwt-generate"
+                    iss-claim: "request.body.source"
+                    exp-claim: 3600
+                    version: "1.0.0"
+                    jwt: "generated-jwt"
+                    sub-claim: "request.body.username"
+                    aud-claim: "request.body.user_id"
+                    jws-alg: "HS256"
+                    jwe-enc: "A128CBC-HS256"
+                    jwe-alg: "A256KW"
+                    jws-jwk: "hs256-key"
+                - gatewayscript:
+                    title: "gatewayscript"
+                    source: "var token = apim.getvariable('generated-jwt');\nvar obj\
+                      \ = {\n    access_token: token\n}\n\napim.setvariable('message.body',obj);\n"
+              otherwise: []
+              version: "1.0.0"
+        - otherwise:
+          - set-variable:
+              title: "set-variable"
+              actions:
+              - value: "302"
+                set: "message.status.code"
+              - set: "message.status.reason"
+                value: "Found"
+              - set: "message.headers.Location"
+                value: "https://myidp.ibm.com"
+          - jwt-generate:
+              title: "jwt-generate"
+              jwt: "generated-jwt"
+              exp-claim: 36000
+              version: "1.0.0"
+              jwe-enc: "A128CBC-HS256"
+              jwe-alg: "A256KW"
+              jws-alg: "HS256"
+              jti-claim: false
+              jws-jwk: "hs256-key"
+              iss-claim: "decoded-claims.iss"
+              sub-claim: "decoded-claims.sub"
+              aud-claim: "decoded-claims.aud"
+          - gatewayscript:
+              title: "gatewayscript"
+              source: "var token = apim.getvariable('generated-jwt');\nvar obj = {\n\
+                \    access_token: token\n}\n\napim.setvariable('message.body',obj);\n"
+    catch:
+    - errors:
+      - "RuntimeError"
+      execute:
+      - set-variable:
+          title: "set-variable"
+          actions:
+          - value: "400"
+            set: "message.status.code"
+          - set: "message.status.reason"
+            value: "Bad request"
+      - gatewayscript:
+          title: "gatewayscript"
+          source: "apim.setvariable('message.body',apim.getvariable('jwt-validate.error-message'));\
+            \   \n"
+  enforced: true
+  testable: true
+  phase: "realized"
+  cors:
+    enabled: true
+  gateway: "datapower-gateway"
+  type: "rest"
+paths:
+  /validate-jwt:
+    get:
+      responses:
+        200:
+          description: "200 OK"
+          schema:
+            type: "object"
+      consumes:
+      - "application/json"
+      - "application/xml"
+      produces:
+      - "application/xml"
+      - "application/json"
+    parameters:
+    - name: "Authorization"
+      type: "string"
+      required: true
+      in: "header"
+      description: "Bearer <jwt-token>"
+  /generate-jwt:
+    parameters: []
+    post:
+      responses:
+        200:
+          description: "success"
+          schema:
+            type: "object"
+      parameters:
+      - name: "request"
+        in: "body"
+        required: false
+        schema:
+          type: "object"
+      consumes:
+      - "application/json"
+      - "application/xml"
+      produces:
+      - "application/xml"
+      - "application/json"
+  /refresh/token:
+    get:
+      responses:
+        200:
+          description: "200 OK"
+    post:
+      responses:
+        200:
+          description: "200 OK"
+      parameters:
+      - name: "request"
+        required: false
+        in: "body"
+        schema:
+          type: "object"
