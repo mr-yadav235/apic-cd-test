@@ -18,12 +18,6 @@ visibility:
 apis:
   jwtapi:
     $ref: "jwtapi_1.0.0.yaml"
-  json2xml:
-    $ref: "json2xml_1.0.0.yaml"
-  test:
-    $ref: "test_1.0.0.yaml"
-  access-request-variable-global:
-    $ref: "access-request-variable-global_1.0.0.yaml"
 plans:
   default:
     title: "Default Plan"
